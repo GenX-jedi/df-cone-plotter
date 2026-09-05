@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0B1015">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DF Cone">
+<title>DF Cone Plotter</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+<style>
+:root{
+  --ground:#0B1015; --surface:#141C23; --sunk:#080C10;
+  --ink:#E5EBF0; --ink-2:#A3B1BD; --ink-3:#6E7E8A;
+  --rule:#26313A;
+  --accent:#FF4D94;
+  --ok:#3FCB86; --warn:#E2A63F; --crit:#F26E63;
+  --f:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --m:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font-family:var(--f);font-size:16px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overscroll-behavior:none;
+}
+button{font-family:inherit;font-size:inherit;color:inherit;border:none;background:none;cursor:pointer}
+input{font-family:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hide{display:none!important}
+
+.view{display:flex;flex-direction:column;height:100dvh;padding:14px}
+
+/* ---------- status strip ---------- */
+.strip{
+  display:flex;align-items:center;gap:8px;flex-wrap:nowrap;
+  font-family:var(--m);font-size:11px;letter-spacing:.04em;color:var(--ink-3);
+  padding-bottom:12px;border-bottom:1px solid var(--rule);
+}
+.gps{display:flex;align-items:center;gap:6px;min-width:0}
+.gps span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.led{width:9px;height:9px;border-radius:50%;background:var(--ink-3);flex:none}
+.led.on{background:var(--ok)}
+.led.weak{background:var(--warn)}
+.led.off{background:var(--crit)}
+.strip .sp{flex:1}
+.pending{
+  color:var(--warn);border:1px solid var(--warn);padding:2px 7px;border-radius:99px;
+  font-weight:700;flex:none;
+}
+#mapchip{flex:none}
+.iconbtn{padding:4px 6px;color:var(--ink-3);font-size:16px;flex:none;line-height:1}
+
+/* ---------- bearing ---------- */
+.mid{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;min-height:0}
+.lab{
+  font-family:var(--m);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-3);text-align:center;
+}
+.bearingwrap{display:flex;align-items:baseline;justify-content:center;gap:0}
+#bearing{
+  width:3.1ch;background:transparent;border:none;text-align:center;
+  font-family:var(--m);font-size:clamp(76px,26vw,120px);font-weight:700;
+  letter-spacing:-.04em;padding:0;
+}
+#bearing::placeholder{color:var(--rule)}
+#bearing:focus{outline:none}
+.degmark{font-family:var(--m);font-size:clamp(34px,11vw,52px);color:var(--ink-3);font-weight:400}
+
+.toggles{display:flex;flex-direction:column;gap:9px}
+.tg{
+  display:flex;align-items:center;gap:14px;width:100%;
+  background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  padding:15px 17px;text-align:left;transition:border-color .12s,background .12s;
+}
+.tg .box{
+  width:26px;height:26px;border-radius:6px;border:2px solid var(--ink-3);flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--ground);
+}
+.tg .txt{display:block;font-size:16px;font-weight:500}
+.tg .sub{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
+.tg[aria-pressed="true"]{border-color:var(--accent);background:rgba(255,77,148,.09)}
+.tg[aria-pressed="true"] .box{background:var(--accent);border-color:var(--accent)}
+
+.preview{
+  font-family:var(--m);font-size:14px;text-align:center;color:var(--accent);
+  letter-spacing:.02em;min-height:20px;
+}
+
+/* ---------- send ---------- */
+.send{
+  width:100%;min-height:74px;border-radius:12px;background:var(--accent);color:#12060C;
+  font-size:22px;font-weight:700;letter-spacing:.06em;margin-top:14px;flex:none;
+  transition:opacity .12s,transform .08s;
+}
+.send:active{transform:scale(.985)}
+.send:disabled{opacity:.34}
+
+/* ---------- confirmation ---------- */
+#confirm{
+  position:fixed;inset:0;background:var(--ground);z-index:50;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;
+}
+#confirm .mark{font-size:88px;line-height:1}
+#confirm .big{font-family:var(--m);font-size:26px;font-weight:700;letter-spacing:.02em;text-align:center}
+#confirm .note{color:var(--ink-2);text-align:center;max-width:30ch;font-size:15px}
+#confirm.ok .mark,#confirm.ok .big{color:var(--ok)}
+#confirm.warn .mark,#confirm.warn .big{color:var(--warn)}
+#confirm.crit .mark,#confirm.crit .big{color:var(--crit)}
+#confirm .dismiss{
+  margin-top:8px;border:1px solid var(--rule);border-radius:10px;padding:13px 30px;
+  font-size:16px;font-weight:600;color:var(--ink-2);
+}
+
+/* ---------- setup + log ---------- */
+.head{display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.head h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em;flex:1}
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:18px 0;min-height:0}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+.field label{font-family:var(--m);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.field input{
+  background:var(--sunk);border:1px solid var(--rule);border-radius:9px;padding:14px 13px;
+  font-size:16px;width:100%;
+}
+.field .hint{font-size:12px;color:var(--ink-3);line-height:1.4}
+.primary{
+  width:100%;min-height:56px;border-radius:11px;background:var(--accent);color:#12060C;
+  font-size:17px;font-weight:700;flex:none;
+}
+.ghost{
+  width:100%;min-height:50px;border-radius:11px;border:1px solid var(--rule);
+  color:var(--ink-2);font-size:15px;font-weight:600;margin-top:10px;flex:none;
+}
+
+.row{
+  display:grid;grid-template-columns:12px 1fr auto;gap:12px;align-items:start;
+  padding:13px 0;border-bottom:1px solid var(--rule);
+}
+.row .dot{width:10px;height:10px;border-radius:50%;margin-top:6px}
+.row.sent .dot{background:var(--ok)} .row.queued .dot{background:var(--warn)} .row.failed .dot{background:var(--crit)}
+.row .b{font-family:var(--m);font-size:16px;font-weight:700}
+.row .meta{font-family:var(--m);font-size:11px;color:var(--ink-3);margin-top:2px}
+.row .when{font-family:var(--m);font-size:11px;color:var(--ink-3);text-align:right;white-space:nowrap}
+.empty{color:var(--ink-3);text-align:center;padding:44px 20px;font-size:15px}
+.banner{
+  background:rgba(226,166,63,.13);border:1px solid var(--warn);color:var(--warn);
+  border-radius:10px;padding:13px 15px;font-size:14px;margin-bottom:16px;
+  display:flex;align-items:center;gap:12px;
+}
+.banner button{margin-left:auto;font-weight:700;color:var(--warn);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ========== SCREEN 2 — BEARING ========== -->
+<div class="view" id="main">
+  <div class="strip">
+    <span class="gps"><span class="led" id="led"></span><span id="gpstxt">Acquiring…</span></span>
+    <span class="sp"></span>
+    <span id="pendingchip" class="pending hide">0 queued</span>
+    <span id="mapchip"></span>
+    <button class="iconbtn" id="tolog" aria-label="Reading log">☰</button>
+    <button class="iconbtn" id="tosetup" aria-label="Setup">⚙</button>
+  </div>
+
+  <div class="mid">
+    <div>
+      <div class="lab">Magnetic bearing</div>
+      <div class="bearingwrap">
+        <input id="bearing" type="text" inputmode="numeric" pattern="[0-9]*"
+               maxlength="3" placeholder="000" autocomplete="off" aria-label="Magnetic bearing in degrees">
+        <span class="degmark">°</span>
+      </div>
+    </div>
+
+    <div class="toggles">
+      <button class="tg" id="tgOffset" aria-pressed="false">
+        <span class="box">✓</span>
+        <span><span class="txt">Offset tuning</span><span class="sub">Receiver desensitized — you're close</span></span>
+      </button>
+      <button class="tg" id="tgTerrain" aria-pressed="false">
+        <span class="box">✓</span>
+        <span><span class="txt">Terrain obstruction</span><span class="sub">Ridge, structure, likely reflection</span></span>
+      </button>
+    </div>
+
+    <div class="preview" id="preview">Cone: ±8° · 5 mi</div>
+  </div>
+
+  <button class="send" id="send" disabled>SEND</button>
+</div>
+
+<!-- ========== SCREEN 1 — SETUP ========== -->
+<div class="view hide" id="setup">
+  <div class="head">
+    <h1>Setup</h1>
+    <button class="iconbtn" id="setupClose" aria-label="Close">✕</button>
+  </div>
+  <div class="scroll">
+    <div class="field">
+      <label for="fMap">Map ID</label>
+      <input id="fMap" autocapitalize="characters" autocomplete="off" placeholder="ABC12">
+      <span class="hint">The short code after <b>/m/</b> in the CalTopo map URL. Change this for each new mission.</span>
+    </div>
+    <div class="field">
+      <label for="fCall">Callsign</label>
+      <input id="fCall" autocapitalize="characters" autocomplete="off" placeholder="TEAM 3">
+    </div>
+    <div class="field">
+      <label for="fRelay">Relay address</label>
+      <input id="fRelay" type="url" autocomplete="off" inputmode="url" placeholder="https://df-cone-relay.....workers.dev">
+    </div>
+    <div class="field">
+      <label for="fToken">Relay token</label>
+      <input id="fToken" type="password" autocomplete="off" placeholder="••••••••••••">
+      <span class="hint">Set once. Stays on this phone — it is never in the app's public code.</span>
+    </div>
+  </div>
+  <button class="primary" id="saveSetup">Save</button>
+</div>
+
+<!-- ========== SCREEN 4 — LOG ========== -->
+<div class="view hide" id="log">
+  <div class="head">
+    <h1>Readings</h1>
+    <button class="iconbtn" id="logClose" aria-label="Close">✕</button>
+  </div>
+  <div class="scroll">
+    <div class="banner hide" id="flushBanner">
+      <span id="flushTxt">2 readings waiting to send</span>
+      <button id="flushNow">Send all now</button>
+    </div>
+    <div id="rows"></div>
+  </div>
+</div>
+
+<!-- ========== SCREEN 3 — CONFIRMATION ========== -->
+<div id="confirm" class="hide" role="status" aria-live="polite">
+  <div class="mark" id="cMark">✓</div>
+  <div class="big" id="cBig"></div>
+  <div class="note" id="cNote"></div>
+  <button class="dismiss hide" id="cDismiss">OK</button>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- stored state ---------- */
+const CFG_KEY = "dfcone.cfg", Q_KEY = "dfcone.queue";
+const cfg = load(CFG_KEY, { mapId:"", callsign:"", relay:"", token:"" });
+let queue = load(Q_KEY, []);          // every reading, newest last
+let fix = null, sending = false;
+
+function load(k, dflt){ try { return JSON.parse(localStorage.getItem(k)) ?? dflt; } catch { return dflt; } }
+function save(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+const $ = id => document.getElementById(id);
+
+/* ---------- geometry, for the on-screen preview only.
+   The relay is the authority — these numbers exist so you can see what
+   you're about to send. Keep them in step with worker.js GEOMETRY. ---------- */
+const PREVIEW = {
+  "false,false": "±8° · 5 mi",
+  "true,false":  "±12° · 1 mi",
+  "false,true":  "±25° · 3 mi",
+  "true,true":   "±30° · 0.75 mi",
+};
+
+/* ---------- GPS ---------- */
+if (navigator.geolocation) {
+  navigator.geolocation.watchPosition(
+    p => {
+      fix = { lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy };
+      const ft = Math.round(fix.acc * 3.28084);
+      $("led").className = "led " + (fix.acc <= 30 ? "on" : "weak");
+      $("gpstxt").textContent = "GPS ±" + ft + " ft";
+      refresh();
+    },
+    err => {
+      fix = null;
+      $("led").className = "led off";
+      $("gpstxt").textContent = err.code === 1 ? "GPS OFF" : "NO FIX";
+      refresh();
+    },
+    { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
+  );
+} else {
+  $("gpstxt").textContent = "NO GPS";
+}
+
+/* ---------- bearing + toggles ---------- */
+let offset = false, terrain = false;
+
+$("bearing").addEventListener("input", e => {
+  e.target.value = e.target.value.replace(/\D/g, "").slice(0,3);
+  refresh();
+});
+
+function bindToggle(el, get, set){
+  el.addEventListener("click", () => {
+    set(!get());
+    el.setAttribute("aria-pressed", String(get()));
+    refresh();
+  });
+}
+bindToggle($("tgOffset"),  () => offset,  v => offset = v);
+bindToggle($("tgTerrain"), () => terrain, v => terrain = v);
+
+function bearingValue(){
+  const raw = $("bearing").value;
+  if (raw === "") return null;
+  const n = parseInt(raw, 10);
+  return (Number.isFinite(n) && n >= 0 && n <= 359) ? n : null;
+}
+
+function refresh(){
+  $("preview").textContent = "Cone: " + PREVIEW[offset + "," + terrain];
+  const ready = bearingValue() !== null && fix !== null && cfg.relay && cfg.mapId && !sending;
+  $("send").disabled = !ready;
+  $("mapchip").textContent = cfg.mapId ? cfg.mapId : "NO MAP";
+  const n = queue.filter(r => r.status !== "sent").length;
+  $("pendingchip").classList.toggle("hide", n === 0);
+  $("pendingchip").textContent = n + " queued";
+}
+
+/* ---------- send ---------- */
+$("send").addEventListener("click", async () => {
+  const b = bearingValue();
+  if (b === null || !fix) return;
+
+  const reading = {
+    id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
+    mapId: cfg.mapId, callsign: cfg.callsign || "UNIT",
+    lat: fix.lat, lng: fix.lng, bearing: b,
+    offset, terrain,
+    bearingRef: "magnetic",
+    stamp: hhmmL(), at: Date.now(),
+    cone: PREVIEW[offset + "," + terrain],
+    status: "queued",
+  };
+  queue.push(reading);
+  save(Q_KEY, queue);
+
+  sending = true; refresh();
+  const res = await deliver(reading);
+  sending = false;
+
+  // Clear the form for the next reading regardless of outcome.
+  $("bearing").value = "";
+  offset = terrain = false;
+  $("tgOffset").setAttribute("aria-pressed","false");
+  $("tgTerrain").setAttribute("aria-pressed","false");
+  refresh();
+
+  if (res.ok)              showConfirm("ok",   "✓", pad3(b) + "°", "Sent · " + reading.cone, 1500);
+  else if (res.offline)    showConfirm("warn", "◷", pad3(b) + "°", "Queued — no signal. Will send automatically.", 2200);
+  else                     showConfirm("crit", "✕", pad3(b) + "°", res.error + " Saved to the log — tap to retry.", 0);
+});
+
+async function deliver(r){
+  if (!navigator.onLine) return { ok:false, offline:true };
+  try {
+    const res = await fetch(cfg.relay, {
+      method: "POST",
+      headers: { "Content-Type":"application/json", "X-Relay-Token": cfg.token },
+      body: JSON.stringify({
+        mapId:r.mapId, lat:r.lat, lng:r.lng, bearing:r.bearing,
+        offset:r.offset, terrain:r.terrain, callsign:r.callsign,
+        bearingRef:r.bearingRef, stamp:r.stamp,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      r.status = "sent"; r.title = data.title; save(Q_KEY, queue);
+      return { ok:true };
+    }
+    r.status = "failed"; r.error = data.error || ("Relay returned " + res.status + ".");
+    save(Q_KEY, queue);
+    return { ok:false, error:r.error };
+  } catch {
+    r.status = "queued"; save(Q_KEY, queue);
+    return { ok:false, offline:true };
+  }
+}
+
+/* ---------- queue flushing ---------- */
+async function flush(){
+  if (!navigator.onLine || !cfg.relay) return;
+  for (const r of queue) {
+    if (r.status === "sent") continue;
+    await deliver(r);
+  }
+  save(Q_KEY, queue); refresh(); renderLog();
+}
+window.addEventListener("online", flush);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) flush(); });
+
+/* ---------- confirmation ---------- */
+let confirmTimer = null;
+function showConfirm(kind, mark, big, note, autoMs){
+  clearTimeout(confirmTimer);
+  const c = $("confirm");
+  c.className = kind;
+  $("cMark").textContent = mark;
+  $("cBig").textContent = big;
+  $("cNote").textContent = note;
+  $("cDismiss").classList.toggle("hide", autoMs > 0);
+  if (autoMs > 0) confirmTimer = setTimeout(hideConfirm, autoMs);
+  if (navigator.vibrate) navigator.vibrate(kind === "ok" ? 40 : [60,60,60]);
+}
+function hideConfirm(){ $("confirm").classList.add("hide"); $("confirm").className = "hide"; }
+$("cDismiss").addEventListener("click", hideConfirm);
+$("confirm").addEventListener("click", e => { if (e.target === $("confirm")) hideConfirm(); });
+
+/* ---------- screens ---------- */
+const show = id => ["main","setup","log"].forEach(v => $(v).classList.toggle("hide", v !== id));
+$("tosetup").addEventListener("click", () => { fillSetup(); show("setup"); });
+$("setupClose").addEventListener("click", () => show("main"));
+$("tolog").addEventListener("click", () => { renderLog(); show("log"); });
+$("logClose").addEventListener("click", () => show("main"));
+
+function fillSetup(){
+  $("fMap").value = cfg.mapId; $("fCall").value = cfg.callsign;
+  $("fRelay").value = cfg.relay; $("fToken").value = cfg.token;
+}
+$("saveSetup").addEventListener("click", () => {
+  cfg.mapId = $("fMap").value.trim();
+  cfg.callsign = $("fCall").value.trim();
+  cfg.relay = $("fRelay").value.trim().replace(/\/+$/, "");
+  cfg.token = $("fToken").value;
+  save(CFG_KEY, cfg);
+  refresh(); show("main"); flush();
+});
+
+/* ---------- log ---------- */
+function renderLog(){
+  const pending = queue.filter(r => r.status !== "sent").length;
+  $("flushBanner").classList.toggle("hide", pending === 0);
+  $("flushTxt").textContent = pending + (pending === 1 ? " reading waiting" : " readings waiting");
+
+  const rows = $("rows");
+  rows.innerHTML = "";
+  if (!queue.length) {
+    rows.innerHTML = '<div class="empty">No readings yet.</div>';
+    return;
+  }
+  [...queue].reverse().forEach(r => {
+    const el = document.createElement("div");
+    el.className = "row " + r.status;
+    el.innerHTML =
+      '<span class="dot"></span>' +
+      '<span><span class="b">' + pad3(r.bearing) + '°</span>' +
+      '<span class="meta">' + r.cone +
+        (r.offset ? " · offset" : "") + (r.terrain ? " · terrain" : "") +
+        (r.status === "failed" ? " · " + esc(r.error || "failed") : "") +
+      '</span></span>' +
+      '<span class="when">' + r.stamp + '</span>';
+    if (r.status !== "sent") el.addEventListener("click", flush);
+    rows.appendChild(el);
+  });
+}
+$("flushNow").addEventListener("click", flush);
+
+/* ---------- helpers ---------- */
+function pad3(n){ return String(n).padStart(3, "0"); }
+function hhmmL(){
+  const d = new Date();
+  return String(d.getHours()).padStart(2,"0") + String(d.getMinutes()).padStart(2,"0") + "L";
+}
+function esc(s){ const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+/* ---------- boot ---------- */
+if (!cfg.relay || !cfg.mapId) { fillSetup(); show("setup"); }
+refresh(); flush();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
