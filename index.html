@@ -172,6 +172,9 @@ input{font-family:inherit;color:inherit}
 .row .meta{font-family:var(--m);font-size:11px;color:var(--ink-3);margin-top:2px}
 .row .when{font-family:var(--m);font-size:11px;color:var(--ink-3);text-align:right;white-space:nowrap}
 .empty{color:var(--ink-3);text-align:center;padding:44px 20px;font-size:15px}
+.exportmsg{font-size:13px;text-align:center;min-height:18px;color:var(--ink-3);padding-bottom:10px}
+.exportmsg.good{color:var(--ok)}
+.exportmsg.bad{color:var(--crit)}
 .banner{
   background:rgba(226,166,63,.13);border:1px solid var(--warn);color:var(--warn);
   border-radius:10px;padding:13px 15px;font-size:14px;margin-bottom:16px;
@@ -273,6 +276,8 @@ input{font-family:inherit;color:inherit}
     <button class="iconbtn" id="logClose" aria-label="Close">✕</button>
   </div>
   <div class="scroll">
+    <button class="ghost" id="exportBtn" style="margin:0 0 16px">Export readings (CSV)</button>
+    <div class="exportmsg" id="exportmsg"></div>
     <div class="banner hide" id="flushBanner">
       <span id="flushTxt">2 readings waiting to send</span>
       <button id="flushNow">Send all now</button>
@@ -312,10 +317,14 @@ const COND = {
   "false,true":  { widen: 17, miles: 3 },
   "true,true":   { widen: 22, miles: 0.75 },
 };
-function coneText(){
+function coneParts(){
   const base = METHOD_HALF[cfg.method] ?? METHOD_HALF.dfset;
   const c = COND[offset + "," + terrain];
-  return "±" + Math.min(base + c.widen, 60) + "° · " + c.miles + " mi";
+  return { half: Math.min(base + c.widen, 60), miles: c.miles };
+}
+function coneText(){
+  const p = coneParts();
+  return "±" + p.half + "° · " + p.miles + " mi";
 }
 
 /* ---------- GPS ----------
@@ -430,7 +439,7 @@ $("send").addEventListener("click", async () => {
     offset, terrain,
     bearingRef: "magnetic", method: cfg.method || "dfset",
     stamp: hhmmL(), at: Date.now(),
-    cone: coneText(),
+    cone: coneText(), half: coneParts().half, miles: coneParts().miles,
     status: "queued",
   };
   queue.push(reading);
@@ -623,6 +632,51 @@ function renderLog(){
   });
 }
 $("flushNow").addEventListener("click", flush);
+
+/* Calibration export. Every reading already carries the apex, the bearing,
+   the equipment class and the time — everything needed to work out how far
+   off each one was, provided you know where the beacon actually sat. */
+function readingsCsv(){
+  const head = "time_local,iso_utc,lat,lng,bearing_mag,method,offset,terrain,half_deg,range_mi,status";
+  const rows = queue.map(r => [
+    r.stamp,
+    new Date(r.at).toISOString(),
+    r.lat != null ? r.lat.toFixed(6) : "",
+    r.lng != null ? r.lng.toFixed(6) : "",
+    r.bearing,
+    r.method || "dfset",
+    r.offset ? 1 : 0,
+    r.terrain ? 1 : 0,
+    r.half != null ? r.half : "",
+    r.miles != null ? r.miles : "",
+    r.status,
+  ].join(","));
+  return [head].concat(rows).join("\n");
+}
+
+$("exportBtn").addEventListener("click", async () => {
+  const el = $("exportmsg");
+  const set = (t, k) => { el.textContent = t; el.className = "exportmsg" + (k ? " " + k : ""); };
+
+  if (!queue.length) { set("No readings to export yet.", "bad"); return; }
+  const csv = readingsCsv();
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "DF Cone readings", text: csv });
+      set("Shared " + queue.length + " readings.", "good");
+      return;
+    } catch (e) {
+      if (e && e.name === "AbortError") { set("", ""); return; }
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(csv);
+    set("Copied " + queue.length + " readings. Paste into an email.", "good");
+  } catch {
+    set("Could not export on this device.", "bad");
+  }
+});
 
 /* ---------- helpers ---------- */
 function pad3(n){ return String(n).padStart(3, "0"); }
