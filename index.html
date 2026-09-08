@@ -97,6 +97,12 @@ input{font-family:inherit;color:inherit}
   letter-spacing:.02em;min-height:20px;
 }
 
+.updatebar{
+  position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
+  z-index:60;background:var(--accent);color:#12060C;border-radius:11px;
+  padding:15px;font-size:15px;font-weight:700;text-align:center;
+  box-shadow:0 6px 24px rgba(0,0,0,.45);
+}
 .why{
   font-size:14px;text-align:center;color:var(--warn);min-height:19px;
   padding:8px 4px 0;font-weight:500;
@@ -260,8 +266,9 @@ input{font-family:inherit;color:inherit}
     </div>
     <div class="field" id="wToken">
       <label for="fToken">Relay token</label>
-      <input id="fToken" type="password" autocomplete="off" placeholder="••••••••••••">
-      <span class="hint">Set once. Stays on this phone — it is never in the app's public code.</span>
+      <input id="fToken" type="text" autocomplete="off" autocapitalize="none"
+             autocorrect="off" spellcheck="false" placeholder="paste it here">
+      <span class="hint">Shown rather than hidden on purpose — a token you cannot proofread is a token you will mistype. Set once; it stays on this phone and is never in the app's public code.</span>
     </div>
   </div>
   <div class="setupmsg" id="setupmsg"></div>
@@ -285,6 +292,8 @@ input{font-family:inherit;color:inherit}
     <div id="rows"></div>
   </div>
 </div>
+
+<button class="updatebar hide" id="updatebar">Update ready — tap to reload</button>
 
 <!-- ========== SCREEN 3 — CONFIRMATION ========== -->
 <div id="confirm" class="hide" role="status" aria-live="polite">
@@ -597,8 +606,16 @@ $("testRelay").addEventListener("click", async () => {
       body: "{}",
     });
     const d = await res.json().catch(() => ({}));
-    if (res.ok && d.ok) setupMsg("✓ " + (d.ping || "Relay reachable, token accepted."), "good");
-    else setupMsg("✗ " + (d.error || ("Relay returned " + res.status)), "bad");
+    if (res.ok && d.ok) {
+      setupMsg("✓ " + (d.ping || "Relay reachable, token accepted."), "good");
+    } else {
+      let m = "✗ " + (d.error || ("Relay returned " + res.status));
+      if (d.relayToken && d.sentToken) {
+        m += "  [relay: " + d.relayToken.len + " chars, #" + d.relayToken.fp +
+             " · sent: " + d.sentToken.len + " chars, #" + d.sentToken.fp + "]";
+      }
+      setupMsg(m, "bad");
+    }
   } catch {
     setupMsg("✗ Could not reach the relay. Check the address, and that you have signal.", "bad");
   }
@@ -689,7 +706,21 @@ function esc(s){ const d = document.createElement("div"); d.textContent = s; ret
 /* ---------- boot ---------- */
 if (!cfg.relay || !cfg.mapId) { fillSetup(); show("setup"); }
 refresh(); flush();
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+/* Picking up a new version used to mean deleting the home screen icon, which
+   also erased the setup screen — including the relay token. Now the app spots
+   its own update and offers a reload, and settings survive. */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloading) return;
+    $("updatebar").classList.remove("hide");
+  });
+  $("updatebar").addEventListener("click", () => {
+    reloading = true;
+    location.reload();
+  });
+}
 </script>
 </body>
 </html>
