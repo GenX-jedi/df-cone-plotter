@@ -16,8 +16,9 @@
   --ground:#0B1015; --surface:#141C23; --sunk:#080C10;
   --ink:#E5EBF0; --ink-2:#A3B1BD; --ink-3:#6E7E8A;
   --rule:#26313A;
-  --accent:#FF4D94;
-  --ok:#3FCB86; --warn:#E2A63F; --crit:#F26E63;
+  --accent:#E8B51F;
+  --accent-ink:#1A1200;
+  --ok:#3FCB86; --warn:#F5942F; --crit:#FF4438;
   --f:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   --m:ui-monospace,"SF Mono",Menlo,monospace;
 }
@@ -89,7 +90,7 @@ input{font-family:inherit;color:inherit}
 }
 .tg .txt{display:block;font-size:16px;font-weight:500}
 .tg .sub{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
-.tg[aria-pressed="true"]{border-color:var(--accent);background:rgba(255,77,148,.09)}
+.tg[aria-pressed="true"]{border-color:var(--accent);background:rgba(232,181,31,.12)}
 .tg[aria-pressed="true"] .box{background:var(--accent);border-color:var(--accent)}
 
 .preview{
@@ -99,7 +100,7 @@ input{font-family:inherit;color:inherit}
 
 .updatebar{
   position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
-  z-index:60;background:var(--accent);color:#12060C;border-radius:11px;
+  z-index:60;background:var(--accent);color:var(--accent-ink);border-radius:11px;
   padding:15px;font-size:15px;font-weight:700;text-align:center;
   box-shadow:0 6px 24px rgba(0,0,0,.45);
 }
@@ -109,7 +110,7 @@ input{font-family:inherit;color:inherit}
 }
 /* ---------- send ---------- */
 .send{
-  width:100%;min-height:74px;border-radius:12px;background:var(--accent);color:#12060C;
+  width:100%;min-height:74px;border-radius:12px;background:var(--accent);color:var(--accent-ink);
   font-size:22px;font-weight:700;letter-spacing:.06em;margin-top:14px;flex:none;
   transition:opacity .12s,transform .08s;
 }
@@ -151,7 +152,7 @@ input{font-family:inherit;color:inherit}
   transition:border-color .12s,background .12s,color .12s;
 }
 .seg button[aria-checked="true"]{
-  border-color:var(--accent);background:rgba(255,77,148,.10);color:var(--ink);
+  border-color:var(--accent);background:rgba(232,181,31,.13);color:var(--ink);
 }
 .setupmsg{
   font-size:14px;text-align:center;min-height:19px;padding:4px 4px 10px;
@@ -160,7 +161,7 @@ input{font-family:inherit;color:inherit}
 .setupmsg.bad{color:var(--crit)}
 .setupmsg.good{color:var(--ok)}
 .primary{
-  width:100%;min-height:56px;border-radius:11px;background:var(--accent);color:#12060C;
+  width:100%;min-height:56px;border-radius:11px;background:var(--accent);color:var(--accent-ink);
   font-size:17px;font-weight:700;flex:none;
 }
 .ghost{
@@ -172,8 +173,13 @@ input{font-family:inherit;color:inherit}
   display:grid;grid-template-columns:12px 1fr auto;gap:12px;align-items:start;
   padding:13px 0;border-bottom:1px solid var(--rule);
 }
-.row .dot{width:10px;height:10px;border-radius:50%;margin-top:6px}
-.row.sent .dot{background:var(--ok)} .row.queued .dot{background:var(--warn)} .row.failed .dot{background:var(--crit)}
+.row .dot{
+  font-size:13px;line-height:1;margin-top:4px;text-align:center;font-weight:700;
+}
+.row.sent .dot{color:var(--ok)}
+.row.queued .dot{color:var(--warn)}
+.row.failed .dot{color:var(--crit)}
+.row.failed .b{color:var(--crit)}
 .row .b{font-family:var(--m);font-size:16px;font-weight:700}
 .row .meta{font-family:var(--m);font-size:11px;color:var(--ink-3);margin-top:2px}
 .row .when{font-family:var(--m);font-size:11px;color:var(--ink-3);text-align:right;white-space:nowrap}
@@ -182,11 +188,54 @@ input{font-family:inherit;color:inherit}
 .exportmsg.good{color:var(--ok)}
 .exportmsg.bad{color:var(--crit)}
 .banner{
-  background:rgba(226,166,63,.13);border:1px solid var(--warn);color:var(--warn);
+  background:rgba(245,148,47,.13);border:1px solid var(--warn);color:var(--warn);
   border-radius:10px;padding:13px 15px;font-size:14px;margin-bottom:16px;
   display:flex;align-items:center;gap:12px;
 }
 .banner button{margin-left:auto;font-weight:700;color:var(--warn);white-space:nowrap}
+/* ---------- landscape: chest-rig mounting ----------
+   Height collapses to roughly 390px, so the portrait stack does not fit.
+   Bearing takes the left, controls the right, and SEND stays full width
+   along the bottom — the biggest target on the screen, reachable with
+   either hand while the phone is strapped on. */
+@media (orientation:landscape) and (max-height:560px){
+  .view{padding:9px 14px}
+  .strip{padding-bottom:8px}
+
+  #main .mid{flex-direction:row;align-items:center;gap:24px;margin:0}
+  .bearingblock{flex:1 1 42%;min-width:0}
+  .controls{flex:1 1 58%;display:flex;flex-direction:column;gap:8px;min-width:0}
+
+  .lab{font-size:10px;letter-spacing:.14em}
+  #bearing{font-size:clamp(64px,13vw,112px);padding-bottom:2px}
+  .degmark{font-size:clamp(30px,6vw,48px)}
+
+  .tg{padding:10px 14px;gap:11px;border-radius:9px}
+  .tg .box{width:22px;height:22px}
+  .tg .txt{font-size:15px}
+  .tg .sub{font-size:11px;margin-top:1px}
+  .toggles{gap:7px}
+  .preview{font-size:13px;min-height:16px}
+
+  .why{padding:5px 4px 0;min-height:16px;font-size:13px}
+  .send{min-height:58px;font-size:20px;margin-top:8px}
+
+  /* Setup and log gain a second column rather than a longer scroll. */
+  #setup .scroll{
+    display:grid;grid-template-columns:1fr 1fr;gap:0 22px;
+    align-content:start;padding:14px 0;
+  }
+  #setup .scroll > .field{margin-bottom:13px}
+  .field .hint{font-size:11px}
+  .head{padding-bottom:9px}
+  .primary{min-height:48px}
+  .ghost{min-height:44px}
+
+  #confirm .mark{font-size:56px}
+  #confirm .big{font-size:22px}
+  #confirm{gap:9px}
+  .updatebar{padding:12px}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -204,7 +253,7 @@ input{font-family:inherit;color:inherit}
   </div>
 
   <div class="mid">
-    <div>
+    <div class="bearingblock">
       <div class="lab">Tap to enter magnetic bearing</div>
       <div class="bearingwrap">
         <input id="bearing" type="text" inputmode="numeric" pattern="[0-9]*"
@@ -213,6 +262,7 @@ input{font-family:inherit;color:inherit}
       </div>
     </div>
 
+    <div class="controls">
     <div class="toggles">
       <button class="tg" id="tgOffset" aria-pressed="false">
         <span class="box">✓</span>
@@ -225,6 +275,7 @@ input{font-family:inherit;color:inherit}
     </div>
 
     <div class="preview" id="preview">Cone: ±8° · 5 mi</div>
+    </div>
   </div>
 
   <div class="why" id="why"></div>
@@ -636,8 +687,9 @@ function renderLog(){
   [...queue].reverse().forEach(r => {
     const el = document.createElement("div");
     el.className = "row " + r.status;
+    const glyph = r.status === "sent" ? "✓" : r.status === "queued" ? "◷" : "✕";
     el.innerHTML =
-      '<span class="dot"></span>' +
+      '<span class="dot">' + glyph + '</span>' +
       '<span><span class="b">' + pad3(r.bearing) + '°</span>' +
       '<span class="meta">' + r.cone +
         (r.offset ? " · offset" : "") + (r.terrain ? " · terrain" : "") +
