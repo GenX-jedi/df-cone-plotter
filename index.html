@@ -137,6 +137,13 @@ input{font-family:inherit;color:inherit}
   font-size:16px;width:100%;
 }
 .field .hint{font-size:12px;color:var(--ink-3);line-height:1.4}
+.field.bad input{border-color:var(--crit)}
+.setupmsg{
+  font-size:14px;text-align:center;min-height:19px;padding:4px 4px 10px;
+  font-weight:500;color:var(--ink-2);
+}
+.setupmsg.bad{color:var(--crit)}
+.setupmsg.good{color:var(--ok)}
 .primary{
   width:100%;min-height:56px;border-radius:11px;background:var(--accent);color:#12060C;
   font-size:17px;font-weight:700;flex:none;
@@ -213,7 +220,7 @@ input{font-family:inherit;color:inherit}
     <button class="iconbtn" id="setupClose" aria-label="Close">✕</button>
   </div>
   <div class="scroll">
-    <div class="field">
+    <div class="field" id="wMap">
       <label for="fMap">Map ID</label>
       <input id="fMap" autocapitalize="characters" autocomplete="off" placeholder="ABC12">
       <span class="hint">The short code after <b>/m/</b> in the CalTopo map URL. Change this for each new mission.</span>
@@ -222,16 +229,18 @@ input{font-family:inherit;color:inherit}
       <label for="fCall">Callsign</label>
       <input id="fCall" autocapitalize="characters" autocomplete="off" placeholder="TEAM 3">
     </div>
-    <div class="field">
+    <div class="field" id="wRelay">
       <label for="fRelay">Relay address</label>
       <input id="fRelay" type="url" autocomplete="off" inputmode="url" placeholder="https://df-cone-relay.....workers.dev">
     </div>
-    <div class="field">
+    <div class="field" id="wToken">
       <label for="fToken">Relay token</label>
       <input id="fToken" type="password" autocomplete="off" placeholder="••••••••••••">
       <span class="hint">Set once. Stays on this phone — it is never in the app's public code.</span>
     </div>
   </div>
+  <div class="setupmsg" id="setupmsg"></div>
+  <button class="ghost" id="testRelay">Test relay connection</button>
   <button class="primary" id="saveSetup">Save</button>
 </div>
 
@@ -481,13 +490,67 @@ function fillSetup(){
   $("fMap").value = cfg.mapId; $("fCall").value = cfg.callsign;
   $("fRelay").value = cfg.relay; $("fToken").value = cfg.token;
 }
+function setupMsg(text, kind){
+  const el = $("setupmsg");
+  el.textContent = text;
+  el.className = "setupmsg" + (kind ? " " + kind : "");
+}
+
+function readSetup(){
+  return {
+    mapId: $("fMap").value.trim(),
+    callsign: $("fCall").value.trim(),
+    relay: $("fRelay").value.trim().replace(/\/+$/, ""),
+    token: $("fToken").value.trim(),
+  };
+}
+
 $("saveSetup").addEventListener("click", () => {
-  cfg.mapId = $("fMap").value.trim();
-  cfg.callsign = $("fCall").value.trim();
-  cfg.relay = $("fRelay").value.trim().replace(/\/+$/, "");
-  cfg.token = $("fToken").value;
+  const next = readSetup();
+
+  // Say what's missing instead of dismissing and leaving SEND dead.
+  const missing = [];
+  if (!next.mapId) missing.push(["wMap", "map ID"]);
+  if (!next.relay) missing.push(["wRelay", "relay address"]);
+  if (!next.token) missing.push(["wToken", "relay token"]);
+  ["wMap","wRelay","wToken"].forEach(id => $(id).classList.remove("bad"));
+  if (missing.length) {
+    missing.forEach(([id]) => $(id).classList.add("bad"));
+    setupMsg("Still needed: " + missing.map(m => m[1]).join(", "), "bad");
+    return;
+  }
+
+  Object.assign(cfg, next);
   save(CFG_KEY, cfg);
+
+  // Confirm it actually persisted. Storage can fail silently on iOS.
+  const back = load(CFG_KEY, null);
+  if (!back || back.relay !== cfg.relay || back.mapId !== cfg.mapId) {
+    setupMsg("Settings could not be saved on this device.", "bad");
+    return;
+  }
+
+  setupMsg("", "");
   refresh(); show("main"); flush();
+});
+
+// Proves the relay address and token without writing to any map.
+$("testRelay").addEventListener("click", async () => {
+  const t = readSetup();
+  if (!t.relay || !t.token) { setupMsg("Enter the relay address and token first.", "bad"); return; }
+  setupMsg("Testing…", "");
+  try {
+    const res = await fetch(t.relay + "?ping=1", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Relay-Token": t.token },
+      body: "{}",
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.ok) setupMsg("✓ " + (d.ping || "Relay reachable, token accepted."), "good");
+    else setupMsg("✗ " + (d.error || ("Relay returned " + res.status)), "bad");
+  } catch {
+    setupMsg("✗ Could not reach the relay. Check the address, and that you have signal.", "bad");
+  }
 });
 
 /* ---------- log ---------- */
