@@ -138,6 +138,15 @@ input{font-family:inherit;color:inherit}
 }
 .field .hint{font-size:12px;color:var(--ink-3);line-height:1.4}
 .field.bad input{border-color:var(--crit)}
+.seg{display:flex;gap:6px}
+.seg button{
+  flex:1;background:var(--sunk);border:1px solid var(--rule);border-radius:9px;
+  padding:13px 6px;font-size:14px;font-weight:600;color:var(--ink-3);
+  transition:border-color .12s,background .12s,color .12s;
+}
+.seg button[aria-checked="true"]{
+  border-color:var(--accent);background:rgba(255,77,148,.10);color:var(--ink);
+}
 .setupmsg{
   font-size:14px;text-align:center;min-height:19px;padding:4px 4px 10px;
   font-weight:500;color:var(--ink-2);
@@ -226,6 +235,19 @@ input{font-family:inherit;color:inherit}
       <span class="hint">The short code after <b>/m/</b> in the CalTopo map URL. Change this for each new mission.</span>
     </div>
     <div class="field">
+      <label>DF method</label>
+      <div class="seg" id="fMethod" role="radiogroup" aria-label="DF method">
+        <button type="button" data-m="dfset"  aria-checked="true">DF set</button>
+        <button type="button" data-m="yagi"   aria-checked="false">Yagi</button>
+        <button type="button" data-m="shield" aria-checked="false">Body shield</button>
+      </div>
+      <span class="hint">What <em>you</em> carry. DF set = L-Per, Becker, Polaris.
+      Yagi = directional antenna on an air-band handheld. Body shield = using
+      your torso to null with a Baofeng or scanner. Set once; it applies to
+      every reading.</span>
+    </div>
+
+    <div class="field">
       <label for="fCall">Callsign</label>
       <input id="fCall" autocapitalize="characters" autocomplete="off" placeholder="TEAM 3">
     </div>
@@ -272,7 +294,7 @@ input{font-family:inherit;color:inherit}
 
 /* ---------- stored state ---------- */
 const CFG_KEY = "dfcone.cfg", Q_KEY = "dfcone.queue";
-const cfg = load(CFG_KEY, { mapId:"", callsign:"", relay:"", token:"" });
+const cfg = load(CFG_KEY, { mapId:"", callsign:"", relay:"", token:"", method:"dfset" });
 let queue = load(Q_KEY, []);          // every reading, newest last
 let fix = null, sending = false;
 
@@ -283,12 +305,18 @@ const $ = id => document.getElementById(id);
 /* ---------- geometry, for the on-screen preview only.
    The relay is the authority — these numbers exist so you can see what
    you're about to send. Keep them in step with worker.js GEOMETRY. ---------- */
-const PREVIEW = {
-  "false,false": "±8° · 5 mi",
-  "true,false":  "±12° · 1 mi",
-  "false,true":  "±25° · 3 mi",
-  "true,true":   "±30° · 0.75 mi",
+const METHOD_HALF = { dfset: 8, yagi: 15, shield: 35 };
+const COND = {
+  "false,false": { widen:  0, miles: 5 },
+  "true,false":  { widen:  4, miles: 1 },
+  "false,true":  { widen: 17, miles: 3 },
+  "true,true":   { widen: 22, miles: 0.75 },
 };
+function coneText(){
+  const base = METHOD_HALF[cfg.method] ?? METHOD_HALF.dfset;
+  const c = COND[offset + "," + terrain];
+  return "±" + Math.min(base + c.widen, 60) + "° · " + c.miles + " mi";
+}
 
 /* ---------- GPS ----------
    High accuracy first. If that times out — common indoors, in a vehicle, or
@@ -379,7 +407,7 @@ function blocker(){
 }
 
 function refresh(){
-  $("preview").textContent = "Cone: " + PREVIEW[offset + "," + terrain];
+  $("preview").textContent = "Cone: " + coneText();
   const why = blocker();
   $("why").textContent = why || "";
   const ready = why === null;
@@ -400,9 +428,9 @@ $("send").addEventListener("click", async () => {
     mapId: cfg.mapId, callsign: cfg.callsign || "UNIT",
     lat: fix.lat, lng: fix.lng, bearing: b,
     offset, terrain,
-    bearingRef: "magnetic",
+    bearingRef: "magnetic", method: cfg.method || "dfset",
     stamp: hhmmL(), at: Date.now(),
-    cone: PREVIEW[offset + "," + terrain],
+    cone: coneText(),
     status: "queued",
   };
   queue.push(reading);
@@ -433,7 +461,7 @@ async function deliver(r){
       body: JSON.stringify({
         mapId:r.mapId, lat:r.lat, lng:r.lng, bearing:r.bearing,
         offset:r.offset, terrain:r.terrain, callsign:r.callsign,
-        bearingRef:r.bearingRef, stamp:r.stamp,
+        bearingRef:r.bearingRef, method:r.method, stamp:r.stamp,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -486,9 +514,22 @@ $("setupClose").addEventListener("click", () => show("main"));
 $("tolog").addEventListener("click", () => { renderLog(); show("log"); });
 $("logClose").addEventListener("click", () => show("main"));
 
+let methodPick = "dfset";
+
+$("fMethod").addEventListener("click", e => {
+  const b = e.target.closest("button[data-m]");
+  if (!b) return;
+  methodPick = b.dataset.m;
+  [...$("fMethod").children].forEach(x =>
+    x.setAttribute("aria-checked", String(x === b)));
+});
+
 function fillSetup(){
   $("fMap").value = cfg.mapId; $("fCall").value = cfg.callsign;
   $("fRelay").value = cfg.relay; $("fToken").value = cfg.token;
+  methodPick = cfg.method || "dfset";
+  [...$("fMethod").children].forEach(x =>
+    x.setAttribute("aria-checked", String(x.dataset.m === methodPick)));
 }
 function setupMsg(text, kind){
   const el = $("setupmsg");
@@ -502,6 +543,7 @@ function readSetup(){
     callsign: $("fCall").value.trim(),
     relay: $("fRelay").value.trim().replace(/\/+$/, ""),
     token: $("fToken").value.trim(),
+    method: methodPick,
   };
 }
 
