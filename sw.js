@@ -2,7 +2,7 @@
    Caches the app shell so it opens with no signal. Bump CACHE on every
    change to index.html, or phones will keep serving the old version. */
 
-const CACHE = "dfcone-v1";
+const CACHE = "dfcone-v2";
 const SHELL = [
   "./",
   "./index.html",

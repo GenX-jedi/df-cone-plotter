@@ -43,7 +43,7 @@ input{font-family:inherit;color:inherit}
   font-family:var(--m);font-size:11px;letter-spacing:.04em;color:var(--ink-3);
   padding-bottom:12px;border-bottom:1px solid var(--rule);
 }
-.gps{display:flex;align-items:center;gap:6px;min-width:0}
+.gps{display:flex;align-items:center;gap:6px;min-width:0;font-family:inherit;font-size:inherit;color:inherit;padding:2px 0}
 .gps span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .led{width:9px;height:9px;border-radius:50%;background:var(--ink-3);flex:none}
 .led.on{background:var(--ok)}
@@ -65,12 +65,16 @@ input{font-family:inherit;color:inherit}
 }
 .bearingwrap{display:flex;align-items:baseline;justify-content:center;gap:0}
 #bearing{
-  width:3.1ch;background:transparent;border:none;text-align:center;
+  width:3.1ch;background:transparent;text-align:center;
+  border:none;border-bottom:2px solid var(--rule);border-radius:0;
+  caret-color:var(--accent);
   font-family:var(--m);font-size:clamp(76px,26vw,120px);font-weight:700;
-  letter-spacing:-.04em;padding:0;
+  letter-spacing:-.04em;padding:0 0 4px;
+  transition:border-color .12s;
+  -webkit-appearance:none;appearance:none;
 }
-#bearing::placeholder{color:var(--rule)}
-#bearing:focus{outline:none}
+#bearing::placeholder{color:var(--ink-3);opacity:.5}
+#bearing:focus{outline:none;border-bottom-color:var(--accent)}
 .degmark{font-family:var(--m);font-size:clamp(34px,11vw,52px);color:var(--ink-3);font-weight:400}
 
 .toggles{display:flex;flex-direction:column;gap:9px}
@@ -93,6 +97,10 @@ input{font-family:inherit;color:inherit}
   letter-spacing:.02em;min-height:20px;
 }
 
+.why{
+  font-size:14px;text-align:center;color:var(--warn);min-height:19px;
+  padding:8px 4px 0;font-weight:500;
+}
 /* ---------- send ---------- */
 .send{
   width:100%;min-height:74px;border-radius:12px;background:var(--accent);color:#12060C;
@@ -162,7 +170,7 @@ input{font-family:inherit;color:inherit}
 <!-- ========== SCREEN 2 — BEARING ========== -->
 <div class="view" id="main">
   <div class="strip">
-    <span class="gps"><span class="led" id="led"></span><span id="gpstxt">Acquiring…</span></span>
+    <button class="gps" id="gpsbtn" aria-label="Retry GPS"><span class="led" id="led"></span><span id="gpstxt">Acquiring…</span></button>
     <span class="sp"></span>
     <span id="pendingchip" class="pending hide">0 queued</span>
     <span id="mapchip"></span>
@@ -172,7 +180,7 @@ input{font-family:inherit;color:inherit}
 
   <div class="mid">
     <div>
-      <div class="lab">Magnetic bearing</div>
+      <div class="lab">Tap to enter magnetic bearing</div>
       <div class="bearingwrap">
         <input id="bearing" type="text" inputmode="numeric" pattern="[0-9]*"
                maxlength="3" placeholder="000" autocomplete="off" aria-label="Magnetic bearing in degrees">
@@ -194,6 +202,7 @@ input{font-family:inherit;color:inherit}
     <div class="preview" id="preview">Cone: ±8° · 5 mi</div>
   </div>
 
+  <div class="why" id="why"></div>
   <button class="send" id="send" disabled>SEND</button>
 </div>
 
@@ -272,27 +281,54 @@ const PREVIEW = {
   "true,true":   "±30° · 0.75 mi",
 };
 
-/* ---------- GPS ---------- */
-if (navigator.geolocation) {
-  navigator.geolocation.watchPosition(
+/* ---------- GPS ----------
+   High accuracy first. If that times out — common indoors, in a vehicle, or
+   under canopy — fall back to a coarse wifi/cell fix rather than sitting on
+   "NO FIX" forever. A coarse apex is worth far more than no cone at all. */
+
+let gpsMsg = "Acquiring…", gpsLed = "", watchId = null, tryingHighAccuracy = true;
+
+function paintGps(){
+  $("led").className = "led " + gpsLed;
+  $("gpstxt").textContent = gpsMsg;
+}
+
+function startGps(highAccuracy){
+  if (!navigator.geolocation){ gpsMsg = "NO GPS"; gpsLed = "off"; paintGps(); return; }
+  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+  tryingHighAccuracy = highAccuracy;
+  watchId = navigator.geolocation.watchPosition(
     p => {
       fix = { lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy };
       const ft = Math.round(fix.acc * 3.28084);
-      $("led").className = "led " + (fix.acc <= 30 ? "on" : "weak");
-      $("gpstxt").textContent = "GPS ±" + ft + " ft";
-      refresh();
+      gpsLed = fix.acc <= 30 ? "on" : "weak";
+      gpsMsg = "GPS ±" + ft + " ft";
+      paintGps(); refresh();
     },
     err => {
       fix = null;
-      $("led").className = "led off";
-      $("gpstxt").textContent = err.code === 1 ? "GPS OFF" : "NO FIX";
-      refresh();
+      if (err.code === 1) {                    // permission denied
+        gpsLed = "off"; gpsMsg = "LOCATION OFF";
+      } else if (tryingHighAccuracy) {         // timeout / unavailable — go coarse
+        gpsLed = "weak"; gpsMsg = "Acquiring…";
+        paintGps(); refresh();
+        startGps(false);
+        return;
+      } else {
+        gpsLed = "off"; gpsMsg = "NO FIX — tap";
+      }
+      paintGps(); refresh();
     },
-    { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
+    { enableHighAccuracy: highAccuracy, maximumAge: 5000, timeout: highAccuracy ? 12000 : 30000 }
   );
-} else {
-  $("gpstxt").textContent = "NO GPS";
 }
+
+$("gpsbtn").addEventListener("click", () => {
+  gpsMsg = "Acquiring…"; gpsLed = ""; paintGps();
+  startGps(true);
+});
+
+startGps(true);
 
 /* ---------- bearing + toggles ---------- */
 let offset = false, terrain = false;
@@ -319,9 +355,25 @@ function bearingValue(){
   return (Number.isFinite(n) && n >= 0 && n <= 359) ? n : null;
 }
 
+// Exactly why SEND cannot fire, in the order a person would fix them.
+function blocker(){
+  if (!cfg.relay || !cfg.mapId) return "Setup incomplete — tap ⚙";
+  if (sending) return "Sending…";
+  if (fix === null) {
+    if (gpsMsg === "LOCATION OFF") return "Location is off — see below";
+    if (gpsMsg === "NO GPS") return "This browser has no GPS";
+    if (gpsMsg.indexOf("NO FIX") === 0) return "No GPS fix — tap the GPS chip to retry";
+    return "Waiting for a GPS fix…";
+  }
+  if (bearingValue() === null) return "Enter a bearing (0-359)";
+  return null;
+}
+
 function refresh(){
   $("preview").textContent = "Cone: " + PREVIEW[offset + "," + terrain];
-  const ready = bearingValue() !== null && fix !== null && cfg.relay && cfg.mapId && !sending;
+  const why = blocker();
+  $("why").textContent = why || "";
+  const ready = why === null;
   $("send").disabled = !ready;
   $("mapchip").textContent = cfg.mapId ? cfg.mapId : "NO MAP";
   const n = queue.filter(r => r.status !== "sent").length;
